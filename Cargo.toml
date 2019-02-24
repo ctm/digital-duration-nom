@@ -1,7 +1,10 @@
 [package]
 name = "sports-metrics"
 version = "0.1.0"
-authors = ["Clifford T. Matthews <ctm@devctm.com>"]
+authors = ["Clifford T. Matthews <ctm@clifford.t.matthews@gmail.com>>"]
 edition = "2018"
 
 [dependencies]
+nom = "^4.2"
+newtype_derive = "0.1.6"
+custom_derive = "0.1.7"
