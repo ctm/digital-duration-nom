@@ -1,6 +1,11 @@
+use nom::{
+    branch::alt,
+    bytes::complete::tag,
+    character::complete::{digit1, one_of},
+    combinator::opt,
+    IResult,
+};
 use std::fmt;
-use nom::digit;
-use nom::types::CompleteStr;
 use std::str::FromStr;
 
 const SECONDS_IN_MINUTE: u64 = 60;
@@ -113,12 +118,16 @@ impl std::ops::AddAssign for Duration {
 // works with Option<T>, it really doesn't belong in duration.rs, but I haven't
 // figured out where I wnt it.
 pub trait Printable<T>
-where T: fmt::Display {
+where
+    T: fmt::Display,
+{
     fn option(&self) -> &Option<T>;
 }
 
 impl<T> Printable<T> for Option<T>
-where T: fmt::Display {
+where
+    T: fmt::Display,
+{
     fn option(&self) -> &Option<T> {
         self
     }
@@ -132,7 +141,6 @@ impl fmt::Display for &dyn Printable<Duration> {
         }
     }
 }
-
 
 //    8:22
 //    1:15.0
@@ -158,108 +166,114 @@ impl fmt::Display for &dyn Printable<Duration> {
 // WITHOUT_DECIMAL = /#{PREFIX_AND_DOUBLE_DIGIT_SECONDS}|#{SINGLE_DIGIT_SECONDS}/
 // ALL = /#{WITHOUT_DECIMAL}#{TENTHS}?/
 
-named!(hour_prefix<CompleteStr, Duration>,
-  do_parse!(
-    digits: digit >>
-    tag!(":") >>
-    (Duration::new(digits.parse::<u64>().unwrap() * SECONDS_IN_HOUR, 0))
-  )
-);
+fn hour_prefix(input: &str) -> IResult<&str, Duration> {
+    let (input, digits) = digit1(input)?;
+    let (input, _) = tag(":")(input)?;
+    Ok((
+        input,
+        Duration::new(digits.parse::<u64>().unwrap() * SECONDS_IN_HOUR, 0),
+    ))
+}
 
-named!(zero_through_five<CompleteStr, u8>,
-  do_parse!(
-    digit: one_of!("012345") >>
-    (digit as u8 - b'0')
-  )
-);
+fn zero_through_five(input: &str) -> IResult<&str, u8> {
+    let (input, digit) = one_of("012345")(input)?;
+    Ok((input, digit as u8 - b'0'))
+}
 
-named!(single_digit<CompleteStr, u8>,
-  do_parse!(
-    digit: one_of!("0123456789") >>
-    (digit as u8 - b'0')
-  )
-);
+fn single_digit(input: &str) -> IResult<&str, u8> {
+    let (input, digit) = one_of("0123456789")(input)?;
+    Ok((input, digit as u8 - b'0'))
+}
 
-named!(double_digit_minute_prefix<CompleteStr, Duration>,
-  do_parse!(
-    tens: zero_through_five >>
-    ones: single_digit >>
-    tag!(":") >>
-    (Duration::new(((u64::from(tens) * 10) + u64::from(ones)) * SECONDS_IN_MINUTE, 0))
-  )
-);
+fn double_digit_minute_prefix(input: &str) -> IResult<&str, Duration> {
+    let (input, tens) = zero_through_five(input)?;
+    let (input, ones) = single_digit(input)?;
+    let (input, _) = tag(":")(input)?;
+    Ok((
+        input,
+        Duration::new(
+            ((u64::from(tens) * 10) + u64::from(ones)) * SECONDS_IN_MINUTE,
+            0,
+        ),
+    ))
+}
 
-named!(single_digit_minute_prefix<CompleteStr, Duration>,
-  do_parse!(
-    ones: single_digit >>
-    tag!(":") >>
-    (Duration::new(u64::from(ones) * SECONDS_IN_MINUTE, 0))
-  )
-);
+fn single_digit_minute_prefix(input: &str) -> IResult<&str, Duration> {
+    let (input, ones) = single_digit(input)?;
+    let (input, _) = tag(":")(input)?;
+    Ok((input, Duration::new(u64::from(ones) * SECONDS_IN_MINUTE, 0)))
+}
 
-named!(double_digit_seconds<CompleteStr, Duration>,
-  do_parse!(
-    tens: zero_through_five >>
-    ones: single_digit >>
-    (Duration::new((u64::from(tens) * 10) + u64::from(ones), 0))
-  )
-);
+fn double_digit_seconds(input: &str) -> IResult<&str, Duration> {
+    let (input, tens) = zero_through_five(input)?;
+    let (input, ones) = single_digit(input)?;
+    Ok((
+        input,
+        Duration::new((u64::from(tens) * 10) + u64::from(ones), 0),
+    ))
+}
 
-named!(single_digit_seconds<CompleteStr, Duration>,
-  do_parse!(
-    ones: single_digit >>
-    (Duration::new(u64::from(ones), 0))
-  )
-);
+fn single_digit_seconds(input: &str) -> IResult<&str, Duration> {
+    let (input, ones) = single_digit(input)?;
+    Ok((input, Duration::new(u64::from(ones), 0)))
+}
 
-named!(tenths<CompleteStr, Duration>,
-  do_parse!(
-    tag!(".") >>
-    tenth: single_digit >>
-    (Duration::new(0, u32::from(tenth) * TENTHS_IN_NANOSECOND))
-  )
-);
+fn tenths(input: &str) -> IResult<&str, Duration> {
+    let (input, _) = tag(".")(input)?;
+    let (input, tenth) = single_digit(input)?;
+    Ok((
+        input,
+        Duration::new(0, u32::from(tenth) * TENTHS_IN_NANOSECOND),
+    ))
+}
 
-named!(hour_and_minute_prefix<CompleteStr, Duration>,
-  alt!(
-    do_parse!(
-      hours: hour_prefix >>
-      minutes: double_digit_minute_prefix >>
-      (hours + minutes)
-    ) |
-    double_digit_minute_prefix
-  )
-);
+fn hours_and_double_digit_minute_prefix(input: &str) -> IResult<&str, Duration> {
+    let (input, hours) = hour_prefix(input)?;
+    let (input, minutes) = double_digit_minute_prefix(input)?;
+    Ok((input, hours + minutes))
+}
 
-named!(minute_prefix<CompleteStr, Duration>,
-  alt!(hour_and_minute_prefix | single_digit_minute_prefix)
-);
+fn hour_and_minute_prefix(input: &str) -> IResult<&str, Duration> {
+    let (input, res) = alt((
+        hours_and_double_digit_minute_prefix,
+        double_digit_minute_prefix,
+    ))(input)?;
+    Ok((input, res))
+}
 
-named!(prefix_and_double_digit_seconds<CompleteStr, Duration>,
-  do_parse!(
-    minutes: opt!(minute_prefix) >>
-    seconds: double_digit_seconds >>
-    (match minutes {
-      None => seconds,
-      Some(minutes) => minutes + seconds
-    })
-  )
-);
+fn minute_prefix(input: &str) -> IResult<&str, Duration> {
+    let (input, res) = alt((hour_and_minute_prefix, single_digit_minute_prefix))(input)?;
+    Ok((input, res))
+}
 
-named!(without_decimal<CompleteStr, Duration>,
-  alt!(prefix_and_double_digit_seconds | single_digit_seconds)
-);
+fn prefix_and_double_digit_seconds(input: &str) -> IResult<&str, Duration> {
+    let (input, minutes) = opt(minute_prefix)(input)?;
+    let (input, seconds) = double_digit_seconds(input)?;
+    Ok((
+        input,
+        match minutes {
+            None => seconds,
+            Some(minutes) => minutes + seconds,
+        },
+    ))
+}
 
-named!(pub duration_parser<CompleteStr, Duration>,
-  do_parse!(
-    seconds: without_decimal >>
-    tenths: opt!(tenths) >>
-    (match tenths {
-      None => seconds,
-      Some(tenths) => seconds + tenths,
-    })
-  )
-);
+fn without_decimal(input: &str) -> IResult<&str, Duration> {
+    let (input, res) = alt((prefix_and_double_digit_seconds, single_digit_seconds))(input)?;
+    Ok((input, res))
+}
+
+pub fn duration_parser(input: &str) -> IResult<&str, Duration> {
+    let (input, seconds) = without_decimal(input)?;
+    let (input, tenths) = opt(tenths)(input)?;
+    Ok((
+        input,
+        match tenths {
+            None => seconds,
+            Some(tenths) => seconds + tenths,
+        },
+    ))
+}
 
 #[derive(Debug)]
 pub enum ParseDurationErr {
@@ -271,7 +285,7 @@ impl FromStr for Duration {
     type Err = ParseDurationErr;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match duration_parser(CompleteStr(s)) {
+        match duration_parser(s) {
             Ok((remaining, duration)) => {
                 if remaining.is_empty() {
                     Ok(duration)
@@ -303,33 +317,24 @@ mod tests {
 
     #[test]
     fn test_hour_prefix() {
-        assert_eq!(
-            Duration::new(3600, 0),
-            hour_prefix(CompleteStr("1:")).unwrap().1
-        );
-        assert_eq!(
-            Duration::new(36000, 0),
-            hour_prefix(CompleteStr("10:")).unwrap().1
-        );
+        assert_eq!(Duration::new(3600, 0), hour_prefix("1:").unwrap().1);
+        assert_eq!(Duration::new(36000, 0), hour_prefix("10:").unwrap().1);
     }
 
     #[test]
     fn test_double_digit_minute_prefix() {
         assert_eq!(
             Duration::new(11 * SECONDS_IN_MINUTE, 0),
-            double_digit_minute_prefix(CompleteStr("11:06")).unwrap().1
+            double_digit_minute_prefix("11:06").unwrap().1
         );
     }
 
     #[test]
     fn test_tenths() {
-        assert_eq!(
-            Duration::new(0, 900_000_000),
-            tenths(CompleteStr(".9")).unwrap().1
-        );
+        assert_eq!(Duration::new(0, 900_000_000), tenths(".9").unwrap().1);
         assert_eq!(
             Duration::new(1, 0),
-            tenths(CompleteStr(".9")).unwrap().1 + tenths(CompleteStr(".1")).unwrap().1
+            tenths(".9").unwrap().1 + tenths(".1").unwrap().1
         );
     }
 
@@ -337,7 +342,7 @@ mod tests {
     fn test_hour_and_minute_prefix() {
         assert_eq!(
             Duration::new(11 * SECONDS_IN_MINUTE, 0),
-            hour_and_minute_prefix(CompleteStr("11:06")).unwrap().1
+            hour_and_minute_prefix("11:06").unwrap().1
         );
     }
 
@@ -345,7 +350,7 @@ mod tests {
     fn test_minute_prefix() {
         assert_eq!(
             Duration::new(11 * SECONDS_IN_MINUTE, 0),
-            minute_prefix(CompleteStr("11:06")).unwrap().1
+            minute_prefix("11:06").unwrap().1
         );
     }
 
@@ -353,9 +358,7 @@ mod tests {
     fn test_prefix_and_double_digit_seconds() {
         assert_eq!(
             Duration::new(11 * SECONDS_IN_MINUTE + 6, 0),
-            prefix_and_double_digit_seconds(CompleteStr("11:06"))
-                .unwrap()
-                .1
+            prefix_and_double_digit_seconds("11:06").unwrap().1
         );
     }
 
@@ -363,17 +366,17 @@ mod tests {
     fn test_duration_parser() {
         assert_eq!(
             Duration::new(8 * SECONDS_IN_MINUTE + 22, 0),
-            duration_parser(CompleteStr("8:22")).unwrap().1
+            duration_parser("8:22").unwrap().1
         );
 
         assert_eq!(
             Duration::new(1 * SECONDS_IN_MINUTE + 15, 3 * TENTHS_IN_NANOSECOND),
-            duration_parser(CompleteStr("1:15.3")).unwrap().1
+            duration_parser("1:15.3").unwrap().1
         );
 
         assert_eq!(
             Duration::new(2 * SECONDS_IN_HOUR + 25 * SECONDS_IN_MINUTE + 36, 0),
-            duration_parser(CompleteStr("2:25:36")).unwrap().1
+            duration_parser("2:25:36").unwrap().1
         );
 
         assert_eq!(
@@ -381,30 +384,30 @@ mod tests {
                 2 * SECONDS_IN_HOUR + 25 * SECONDS_IN_MINUTE + 36,
                 7 * TENTHS_IN_NANOSECOND
             ),
-            duration_parser(CompleteStr("2:25:36.7")).unwrap().1
+            duration_parser("2:25:36.7").unwrap().1
         );
 
         assert_eq!(
             Duration::new(20 * SECONDS_IN_MINUTE + 29, 8 * TENTHS_IN_NANOSECOND),
-            duration_parser(CompleteStr("20:29.8")).unwrap().1
+            duration_parser("20:29.8").unwrap().1
         );
 
         assert_eq!(
             Duration::new(11 * SECONDS_IN_MINUTE + 6, 0),
-            duration_parser(CompleteStr("11:06")).unwrap().1
+            duration_parser("11:06").unwrap().1
         );
 
-        assert_eq!(Duration::new(0, 0), duration_parser(CompleteStr("0")).unwrap().1);
+        assert_eq!(Duration::new(0, 0), duration_parser("0").unwrap().1);
 
-        assert_eq!(Duration::new(1, 0), duration_parser(CompleteStr("1")).unwrap().1);
+        assert_eq!(Duration::new(1, 0), duration_parser("1").unwrap().1);
 
-        assert_eq!(Duration::new(5, 0), duration_parser(CompleteStr("05")).unwrap().1);
+        assert_eq!(Duration::new(5, 0), duration_parser("05").unwrap().1);
 
-        assert_eq!(Duration::new(10, 0), duration_parser(CompleteStr("10")).unwrap().1);
+        assert_eq!(Duration::new(10, 0), duration_parser("10").unwrap().1);
 
         assert_eq!(
             Duration::new(8 * SECONDS_IN_MINUTE + 1, 6 * TENTHS_IN_NANOSECOND),
-            duration_parser(CompleteStr("8:01.6")).unwrap().1
+            duration_parser("8:01.6").unwrap().1
         );
     }
 }
