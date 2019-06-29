@@ -2,7 +2,8 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{digit1, one_of},
-    combinator::opt,
+    combinator::{map, opt},
+    sequence::{preceded, terminated, tuple},
     IResult,
 };
 use std::fmt;
@@ -167,112 +168,93 @@ impl fmt::Display for &dyn Printable<Duration> {
 // ALL = /#{WITHOUT_DECIMAL}#{TENTHS}?/
 
 fn hour_prefix(input: &str) -> IResult<&str, Duration> {
-    let (input, digits) = digit1(input)?;
-    let (input, _) = tag(":")(input)?;
-    Ok((
-        input,
-        Duration::new(digits.parse::<u64>().unwrap() * SECONDS_IN_HOUR, 0),
-    ))
+    map(terminated(digit1, tag(":")), |digits: &str| {
+        Duration::new(digits.parse::<u64>().unwrap() * SECONDS_IN_HOUR, 0)
+    })(input)
 }
 
 fn zero_through_five(input: &str) -> IResult<&str, u8> {
-    let (input, digit) = one_of("012345")(input)?;
-    Ok((input, digit as u8 - b'0'))
+    map(one_of("012345"), |digit| digit as u8 - b'0')(input)
 }
 
 fn single_digit(input: &str) -> IResult<&str, u8> {
-    let (input, digit) = one_of("0123456789")(input)?;
-    Ok((input, digit as u8 - b'0'))
+    map(one_of("0123456789"), |digit| digit as u8 - b'0')(input)
 }
 
 fn double_digit_minute_prefix(input: &str) -> IResult<&str, Duration> {
-    let (input, tens) = zero_through_five(input)?;
-    let (input, ones) = single_digit(input)?;
-    let (input, _) = tag(":")(input)?;
-    Ok((
-        input,
-        Duration::new(
-            ((u64::from(tens) * 10) + u64::from(ones)) * SECONDS_IN_MINUTE,
-            0,
-        ),
-    ))
+    map(
+        tuple((zero_through_five, terminated(single_digit, tag(":")))),
+        |(tens, ones)| {
+            Duration::new(
+                ((u64::from(tens) * 10) + u64::from(ones)) * SECONDS_IN_MINUTE,
+                0,
+            )
+        },
+    )(input)
 }
 
 fn single_digit_minute_prefix(input: &str) -> IResult<&str, Duration> {
-    let (input, ones) = single_digit(input)?;
-    let (input, _) = tag(":")(input)?;
-    Ok((input, Duration::new(u64::from(ones) * SECONDS_IN_MINUTE, 0)))
+    map(terminated(single_digit, tag(":")), |ones| {
+        Duration::new(u64::from(ones) * SECONDS_IN_MINUTE, 0)
+    })(input)
 }
 
 fn double_digit_seconds(input: &str) -> IResult<&str, Duration> {
-    let (input, tens) = zero_through_five(input)?;
-    let (input, ones) = single_digit(input)?;
-    Ok((
-        input,
-        Duration::new((u64::from(tens) * 10) + u64::from(ones), 0),
-    ))
+    map(tuple((zero_through_five, single_digit)), |(tens, ones)| {
+        Duration::new((u64::from(tens) * 10) + u64::from(ones), 0)
+    })(input)
 }
 
 fn single_digit_seconds(input: &str) -> IResult<&str, Duration> {
-    let (input, ones) = single_digit(input)?;
-    Ok((input, Duration::new(u64::from(ones), 0)))
+    map(single_digit, |ones| Duration::new(u64::from(ones), 0))(input)
 }
 
 fn tenths(input: &str) -> IResult<&str, Duration> {
-    let (input, _) = tag(".")(input)?;
-    let (input, tenth) = single_digit(input)?;
-    Ok((
-        input,
-        Duration::new(0, u32::from(tenth) * TENTHS_IN_NANOSECOND),
-    ))
+    map(preceded(tag("."), single_digit), |tenth| {
+        Duration::new(0, u32::from(tenth) * TENTHS_IN_NANOSECOND)
+    })(input)
 }
 
 fn hours_and_double_digit_minute_prefix(input: &str) -> IResult<&str, Duration> {
-    let (input, hours) = hour_prefix(input)?;
-    let (input, minutes) = double_digit_minute_prefix(input)?;
-    Ok((input, hours + minutes))
+    map(
+        tuple((hour_prefix, double_digit_minute_prefix)),
+        |(hours, minutes)| hours + minutes,
+    )(input)
 }
 
 fn hour_and_minute_prefix(input: &str) -> IResult<&str, Duration> {
-    let (input, res) = alt((
+    alt((
         hours_and_double_digit_minute_prefix,
         double_digit_minute_prefix,
-    ))(input)?;
-    Ok((input, res))
+    ))(input)
 }
 
 fn minute_prefix(input: &str) -> IResult<&str, Duration> {
-    let (input, res) = alt((hour_and_minute_prefix, single_digit_minute_prefix))(input)?;
-    Ok((input, res))
+    alt((hour_and_minute_prefix, single_digit_minute_prefix))(input)
 }
 
 fn prefix_and_double_digit_seconds(input: &str) -> IResult<&str, Duration> {
-    let (input, minutes) = opt(minute_prefix)(input)?;
-    let (input, seconds) = double_digit_seconds(input)?;
-    Ok((
-        input,
-        match minutes {
+    map(
+        tuple((opt(minute_prefix), double_digit_seconds)),
+        |(minutes, seconds)| match minutes {
             None => seconds,
             Some(minutes) => minutes + seconds,
         },
-    ))
+    )(input)
 }
 
 fn without_decimal(input: &str) -> IResult<&str, Duration> {
-    let (input, res) = alt((prefix_and_double_digit_seconds, single_digit_seconds))(input)?;
-    Ok((input, res))
+    alt((prefix_and_double_digit_seconds, single_digit_seconds))(input)
 }
 
 pub fn duration_parser(input: &str) -> IResult<&str, Duration> {
-    let (input, seconds) = without_decimal(input)?;
-    let (input, tenths) = opt(tenths)(input)?;
-    Ok((
-        input,
-        match tenths {
+    map(
+        tuple((without_decimal, opt(tenths))),
+        |(seconds, tenths)| match tenths {
             None => seconds,
             Some(tenths) => seconds + tenths,
         },
-    ))
+    )(input)
 }
 
 #[derive(Debug)]
