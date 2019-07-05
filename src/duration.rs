@@ -6,7 +6,7 @@ use nom::{
     sequence::{preceded, terminated, tuple},
     IResult,
 };
-use std::fmt;
+use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 const SECONDS_IN_MINUTE: u64 = 60;
@@ -21,8 +21,8 @@ custom_derive! {
     pub struct Duration(std::time::Duration);
 }
 
-impl fmt::Display for Duration {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Duration {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let all_secs = self.as_secs();
         let hours = all_secs / SECONDS_IN_HOUR;
         let minutes = all_secs / SECONDS_IN_MINUTE % SECONDS_IN_MINUTE;
@@ -111,35 +111,6 @@ impl std::ops::Mul for Duration {
 impl std::ops::AddAssign for Duration {
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
-    }
-}
-
-// This is the best way I (a Rust newbie) currently know to make it so that
-// an Option<Duration> can be easily used in println!.  Logically, since this
-// works with Option<T>, it really doesn't belong in duration.rs, but I haven't
-// figured out where I wnt it.
-pub trait Printable<T>
-where
-    T: fmt::Display,
-{
-    fn option(&self) -> &Option<T>;
-}
-
-impl<T> Printable<T> for Option<T>
-where
-    T: fmt::Display,
-{
-    fn option(&self) -> &Option<T> {
-        self
-    }
-}
-
-impl fmt::Display for &dyn Printable<Duration> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.option() {
-            None => " ".fmt(f),
-            Some(value) => value.fmt(f),
-        }
     }
 }
 

@@ -4,3 +4,4 @@ extern crate custom_derive;
 extern crate newtype_derive;
 
 pub mod duration;
+pub mod option_display;

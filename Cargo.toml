@@ -1,6 +1,6 @@
 [package]
 name = "sports-metrics"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Clifford T. Matthews <ctm@clifford.t.matthews@gmail.com>>"]
 edition = "2018"
 
