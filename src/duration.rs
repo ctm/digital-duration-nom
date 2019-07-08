@@ -230,7 +230,7 @@ pub fn duration_parser(input: &str) -> IResult<&str, Duration> {
 
 #[derive(Debug)]
 pub enum ParseDurationErr {
-    Unspecified, // TODO
+    Unspecified,
     LeftoverCharacters,
 }
 
@@ -246,8 +246,10 @@ impl FromStr for Duration {
                     Err(ParseDurationErr::LeftoverCharacters)
                 }
             }
-            // TODO would be nice to use _e here
-            Err(_e) => Err(ParseDurationErr::Unspecified),
+            // We're throwing away the Err that nom returns, so that
+            // our FromStr implementation doesn't have to depend on nom,
+            // even though it currently does.
+            Err(_) => Err(ParseDurationErr::Unspecified),
         }
     }
 }

@@ -1,11 +1,9 @@
 /// This is the best way I (a Rust newbie) currently know to make it
 /// so that an Option<T: Display> can be easily used in println!.
 ///
-/// FWIW, This doesn't have to do with "sports metrics", per-se, but
-/// that name itself is a misnomer.  This functionality is, however,
-/// fairly useful when creating fixed-width output where a particular
-/// field value is optional and that use-case comes up in the same
-/// place where we want to parse and format Durations.
+/// FWIW, Although this code isn't specific "digital durations", it is
+/// handy when creating fixed-width output that includes digital
+/// durations, so it's included here.
 use std::fmt::{self, Display, Formatter};
 
 pub trait OptionDisplay<T: Display> {
