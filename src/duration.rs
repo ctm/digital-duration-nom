@@ -6,6 +6,7 @@ use nom::{
     sequence::{preceded, terminated, tuple},
     IResult,
 };
+use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
@@ -233,6 +234,18 @@ pub enum ParseDurationErr {
     Unspecified,
     LeftoverCharacters,
 }
+
+impl Display for ParseDurationErr {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        use ParseDurationErr::*;
+        match self {
+            Unspecified => write!(f, "Unspecified error"),
+            LeftoverCharacters => write!(f, "Leftover characters"),
+        }
+    }
+}
+
+impl Error for ParseDurationErr {}
 
 impl FromStr for Duration {
     type Err = ParseDurationErr;
