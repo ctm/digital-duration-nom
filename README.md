@@ -16,7 +16,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-digital-duration-nom = "0.1.0"
+digital-duration-nom = "0.2.0"
 ```
 
 ### Dependencies
