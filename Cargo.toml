@@ -1,10 +1,10 @@
 [package]
 name = "digital-duration-nom"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Clifford T. Matthews <clifford.t.matthews@gmail.com>>"]
 edition = "2018"
 
 [dependencies]
-nom = "5"
+nom = "6"
 newtype_derive = "0.1.6"
 custom_derive = "0.1.7"
