@@ -28,13 +28,9 @@ impl Display for Duration {
         let hours = all_secs / SECONDS_IN_HOUR;
         let minutes = all_secs / SECONDS_IN_MINUTE % SECONDS_IN_MINUTE;
         let seconds = all_secs % SECONDS_IN_MINUTE;
-        let tenths = self.subsec_millis() / 100 as u32;
+        let tenths = self.subsec_millis() / 100u32;
 
-        let precision = match f.precision() {
-            Some(p) => p,
-            None => 0,
-        };
-
+        let precision = f.precision().unwrap_or(0);
         let mut result = String::new();
 
         if hours > 0 {
