@@ -1,3 +1,4 @@
+use derive_more::{Add, AddAssign, Deref, Div, Into};
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -8,6 +9,7 @@ use nom::{
 };
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
+use std::ops::Mul;
 use std::str::FromStr;
 
 const SECONDS_IN_MINUTE: u64 = 60;
@@ -16,10 +18,32 @@ const SECONDS_IN_HOUR: u64 = MINUTES_IN_HOUR * SECONDS_IN_MINUTE;
 const NANOSECONDS_IN_SECOND: u32 = 1_000_000_000;
 const TENTHS_IN_NANOSECOND: u32 = NANOSECONDS_IN_SECOND / 10;
 
-custom_derive! {
-    // Can't use NewtypeSum w/o unstable
-    #[derive(Copy, Clone, Debug, PartialEq, NewtypeAdd, NewtypeDiv(u32), NewtypeDeref, Ord, Eq, PartialOrd)]
-    pub struct Duration(std::time::Duration);
+#[derive(Add, AddAssign, Clone, Copy, Debug, Deref, Div, Eq, Into, Ord, PartialEq, PartialOrd)]
+pub struct Duration(std::time::Duration);
+
+impl Duration {
+    pub fn new(secs: u64, nanos: u32) -> Self {
+        Duration(std::time::Duration::new(secs, nanos))
+    }
+
+    pub const fn from_secs(secs: u64) -> Self {
+        Self(std::time::Duration::from_secs(secs))
+    }
+
+    pub fn new_hour_min_sec(hours: u64, mins: u8, secs: u8) -> Self {
+        Self::new_min_sec(hours * MINUTES_IN_HOUR + u64::from(mins), secs)
+    }
+
+    pub fn new_min_sec(mins: u64, secs: u8) -> Self {
+        Self::new_min_sec_tenths(mins, secs, 0)
+    }
+
+    pub fn new_min_sec_tenths(mins: u64, secs: u8, tenths: u8) -> Self {
+        Self::new(
+            mins * SECONDS_IN_MINUTE + u64::from(secs),
+            u32::from(tenths) * 100_000_000,
+        )
+    }
 }
 
 impl Display for Duration {
@@ -48,40 +72,29 @@ impl Display for Duration {
     }
 }
 
-impl Duration {
-    pub fn new(secs: u64, nanos: u32) -> Self {
-        Duration(std::time::Duration::new(secs, nanos))
-    }
-
-    pub const fn from_secs(secs: u64) -> Self {
-        Self(std::time::Duration::from_secs(secs))
-    }
-
-    pub fn new_hour_min_sec(hours: u64, mins: u8, secs: u8) -> Self {
-        Self::new_min_sec(hours * MINUTES_IN_HOUR + u64::from(mins), secs)
-    }
-
-    pub fn new_min_sec(mins: u64, secs: u8) -> Self {
-        Self::new_min_sec_tenths(mins, secs, 0)
-    }
-
-    pub fn new_min_sec_tenths(mins: u64, secs: u8, tenths: u8) -> Self {
-        Self::new(
-            mins * SECONDS_IN_MINUTE + u64::from(secs),
-            u32::from(tenths) * 100_000_000,
-        )
-    }
-}
-
 impl From<f64> for Duration {
     fn from(f64: f64) -> Self {
         Self::new(f64.trunc() as u64, (f64.fract() * 1e9) as u32)
     }
 }
 
-impl<'a> std::iter::Sum<&'a Duration> for Duration {
-    fn sum<I: Iterator<Item = &'a Duration>>(iter: I) -> Duration {
-        Duration(iter.map(|d| d.0).sum())
+impl FromStr for Duration {
+    type Err = ParseDurationErr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match duration_parser(s) {
+            Ok((remaining, duration)) => {
+                if remaining.is_empty() {
+                    Ok(duration)
+                } else {
+                    Err(ParseDurationErr::LeftoverCharacters)
+                }
+            }
+            // We're throwing away the Err that nom returns, so that
+            // our FromStr implementation doesn't have to depend on nom,
+            // even though it currently does.
+            Err(_) => Err(ParseDurationErr::Unspecified),
+        }
     }
 }
 
@@ -91,13 +104,7 @@ impl Into<f64> for Duration {
     }
 }
 
-impl Into<std::time::Duration> for Duration {
-    fn into(self) -> std::time::Duration {
-        self.0
-    }
-}
-
-impl std::ops::Mul for Duration {
+impl Mul for Duration {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self {
@@ -105,9 +112,9 @@ impl std::ops::Mul for Duration {
     }
 }
 
-impl std::ops::AddAssign for Duration {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
+impl<'a> std::iter::Sum<&'a Duration> for Duration {
+    fn sum<I: Iterator<Item = &'a Duration>>(iter: I) -> Duration {
+        Duration(iter.map(|d| d.0).sum())
     }
 }
 
@@ -242,26 +249,6 @@ impl Display for ParseDurationErr {
 }
 
 impl Error for ParseDurationErr {}
-
-impl FromStr for Duration {
-    type Err = ParseDurationErr;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match duration_parser(s) {
-            Ok((remaining, duration)) => {
-                if remaining.is_empty() {
-                    Ok(duration)
-                } else {
-                    Err(ParseDurationErr::LeftoverCharacters)
-                }
-            }
-            // We're throwing away the Err that nom returns, so that
-            // our FromStr implementation doesn't have to depend on nom,
-            // even though it currently does.
-            Err(_) => Err(ParseDurationErr::Unspecified),
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
