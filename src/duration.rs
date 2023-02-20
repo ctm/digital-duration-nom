@@ -3,12 +3,13 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{digit1, one_of},
-    combinator::{map, opt},
+    combinator::{map, map_res, opt},
     sequence::{preceded, terminated, tuple},
     IResult,
 };
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
+use std::num::ParseIntError;
 use std::ops::Mul;
 use std::str::FromStr;
 
@@ -16,7 +17,6 @@ const SECONDS_IN_MINUTE: u64 = 60;
 const MINUTES_IN_HOUR: u64 = 60;
 const SECONDS_IN_HOUR: u64 = MINUTES_IN_HOUR * SECONDS_IN_MINUTE;
 const NANOSECONDS_IN_SECOND: u32 = 1_000_000_000;
-const TENTHS_IN_NANOSECOND: u32 = NANOSECONDS_IN_SECOND / 10;
 
 #[derive(Add, AddAssign, Clone, Copy, Debug, Deref, Div, Eq, Into, Ord, PartialEq, PartialOrd)]
 pub struct Duration(std::time::Duration);
@@ -98,9 +98,9 @@ impl FromStr for Duration {
     }
 }
 
-impl Into<f64> for Duration {
-    fn into(self) -> f64 {
-        self.as_secs() as f64 + f64::from(self.subsec_nanos()) * 1e-9
+impl From<Duration> for f64 {
+    fn from(value: Duration) -> Self {
+        value.as_secs() as f64 + f64::from(value.subsec_nanos()) * 1e-9
     }
 }
 
@@ -184,10 +184,27 @@ fn single_digit_seconds(input: &str) -> IResult<&str, Duration> {
     map(single_digit, |ones| Duration::new(u64::from(ones), 0))(input)
 }
 
-fn tenths(input: &str) -> IResult<&str, Duration> {
-    map(preceded(tag("."), single_digit), |tenth| {
-        Duration::new(0, u32::from(tenth) * TENTHS_IN_NANOSECOND)
+fn fractional(input: &str) -> IResult<&str, Duration> {
+    map_res(preceded(tag("."), digit1), |digits: &str| {
+        let scale = scale_from_length(digits.len())?;
+        digits
+            .parse()
+            .map(|value: u32| Duration::new(0, value * scale))
+            .map_err(ParseFractError::ParseIntError)
     })(input)
+}
+
+enum ParseFractError {
+    ParseIntError(ParseIntError),
+    TooMuchPrecision,
+}
+
+fn scale_from_length(len: usize) -> Result<u32, ParseFractError> {
+    if len > 9 {
+        Err(ParseFractError::TooMuchPrecision)
+    } else {
+        Ok(NANOSECONDS_IN_SECOND / 10u32.pow(len as u32))
+    }
 }
 
 fn hours_and_double_digit_minute_prefix(input: &str) -> IResult<&str, Duration> {
@@ -224,10 +241,10 @@ fn without_decimal(input: &str) -> IResult<&str, Duration> {
 
 pub fn duration_parser(input: &str) -> IResult<&str, Duration> {
     map(
-        tuple((without_decimal, opt(tenths))),
-        |(seconds, tenths)| match tenths {
+        tuple((without_decimal, opt(fractional))),
+        |(seconds, fraction)| match fraction {
             None => seconds,
-            Some(tenths) => seconds + tenths,
+            Some(fraction) => seconds + fraction,
         },
     )(input)
 }
@@ -253,6 +270,8 @@ impl Error for ParseDurationErr {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TENTHS_IN_NANOSECOND: u32 = NANOSECONDS_IN_SECOND / 10;
 
     #[test]
     fn test_display() {
@@ -281,11 +300,11 @@ mod tests {
     }
 
     #[test]
-    fn test_tenths() {
-        assert_eq!(Duration::new(0, 900_000_000), tenths(".9").unwrap().1);
+    fn test_fractional() {
+        assert_eq!(Duration::new(0, 900_000_000), fractional(".9").unwrap().1);
         assert_eq!(
             Duration::new(1, 0),
-            tenths(".9").unwrap().1 + tenths(".1").unwrap().1
+            fractional(".9").unwrap().1 + fractional(".1").unwrap().1
         );
     }
 
