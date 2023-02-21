@@ -118,29 +118,18 @@ impl<'a> std::iter::Sum<&'a Duration> for Duration {
     }
 }
 
+// Here are some durations that should parse
+//
 //    8:22
 //    1:15.0
 // 2:25:36
 //   20:29.8
+//   20:29.817
 //   11:06
 //       0
 //       1
 //      05
 //      10
-
-// Here's some ruby regexp code that shows what I'm going for
-
-// HOUR_PREFIX = /([0-9]+):/
-// DOUBLE_DIGIT_MINUTE_PREFIX = /([0-5][0-9]):/
-// SINGLE_DIGIT_MINUTE_PREFIX = /([0-9]):/
-// DOUBLE_DIGIT_SECONDS = /([0-5][0-9])/
-// SINGLE_DIGIT_SECONDS = /([0-9])/
-// TENTHS = /\.([0-9])/
-// HOUR_AND_MINUTE_PREFIX = /#{HOUR_PREFIX}?#{DOUBLE_DIGIT_MINUTE_PREFIX}/
-// MINUTE_PREFIX = /#{HOUR_AND_MINUTE_PREFIX}|#{SINGLE_DIGIT_MINUTE_PREFIX}/
-// PREFIX_AND_DOUBLE_DIGIT_SECONDS = /#{MINUTE_PREFIX}?#{DOUBLE_DIGIT_SECONDS}/
-// WITHOUT_DECIMAL = /#{PREFIX_AND_DOUBLE_DIGIT_SECONDS}|#{SINGLE_DIGIT_SECONDS}/
-// ALL = /#{WITHOUT_DECIMAL}#{TENTHS}?/
 
 fn hour_prefix(input: &str) -> IResult<&str, Duration> {
     map(terminated(digit1, tag(":")), |digits: &str| {
@@ -272,6 +261,7 @@ mod tests {
     use super::*;
 
     const TENTHS_IN_NANOSECOND: u32 = NANOSECONDS_IN_SECOND / 10;
+    const MILLIS_IN_NANOSECOND: u32 = NANOSECONDS_IN_SECOND / 1_000;
 
     #[test]
     fn test_display() {
@@ -360,6 +350,11 @@ mod tests {
         assert_eq!(
             Duration::new(20 * SECONDS_IN_MINUTE + 29, 8 * TENTHS_IN_NANOSECOND),
             duration_parser("20:29.8").unwrap().1
+        );
+
+        assert_eq!(
+            Duration::new(20 * SECONDS_IN_MINUTE + 29, 817 * MILLIS_IN_NANOSECOND),
+            duration_parser("20:29.817").unwrap().1
         );
 
         assert_eq!(
