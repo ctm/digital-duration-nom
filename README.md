@@ -16,7 +16,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-digital-duration-nom = "0.2.0"
+digital-duration-nom = "0.5.0"
 ```
 
 ### Dependencies
@@ -26,6 +26,14 @@ code was refactored out of software that was already using nom and I don't
 really expect this code to be useful to anyone other than myself.  As such,
 I don't see any benefit to getting rid of the nom dependency, although it
 could easily be done if there were a reason to.
+
+Similarly,
+[derive_more](https://docs.rs/derive_more/latest/derive_more/) is also
+used.
+
+If the `serde` feature is enabled, Duration can be serialized and
+deserialized via serde, but, of course,
+[serde](https://docs.rs/serde/latest/serde/) is brought in.
 
 ## Public Domain
 

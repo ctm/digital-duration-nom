@@ -376,3 +376,76 @@ mod tests {
         );
     }
 }
+
+#[cfg(feature = "serde")]
+use {
+    serde::{
+        de::{self, Visitor},
+        Deserialize, Deserializer, Serialize, Serializer,
+    },
+    std::borrow::Cow,
+};
+
+#[cfg(feature = "serde")]
+struct StrVisitor;
+
+#[cfg(feature = "serde")]
+impl<'de> Visitor<'de> for StrVisitor {
+    type Value = Duration;
+
+    fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "a string that can be parsed by digital_duration_nom::Duration (e.g., \"12:34.456\")"
+        )
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        s.parse::<Duration>().map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for Duration {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(StrVisitor)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl Serialize for Duration {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let duration: std::time::Duration = self.0;
+
+        let full_nanos;
+        let fraction: Cow<str> = {
+            let nanos = duration.subsec_nanos();
+            if nanos == 0 {
+                "".into()
+            } else {
+                full_nanos = format!(".{nanos:09}");
+                full_nanos.trim_end_matches('0').into()
+            }
+        };
+        let seconds = duration.as_secs();
+        let minutes = seconds / 60;
+        let hours = minutes / 60;
+        let seconds = seconds % 60;
+        let minutes = minutes % 60;
+        let string = if hours > 0 {
+            format!("{hours:02}:{minutes:02}:{seconds:02}{fraction}")
+        } else {
+            format!("{minutes:02}:{seconds:02}{fraction}")
+        };
+        serializer.serialize_str(&string)
+    }
+}
