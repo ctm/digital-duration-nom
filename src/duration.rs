@@ -184,6 +184,7 @@ fn fractional(input: &str) -> IResult<&str, Duration> {
 }
 
 enum ParseFractError {
+    #[allow(dead_code)]
     ParseIntError(ParseIntError),
     TooMuchPrecision,
 }
