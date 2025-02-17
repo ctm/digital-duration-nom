@@ -4,8 +4,8 @@ use nom::{
     bytes::complete::tag,
     character::complete::{digit1, one_of},
     combinator::{map, map_res, opt},
-    sequence::{preceded, terminated, tuple},
-    IResult,
+    sequence::{preceded, terminated},
+    IResult, Parser,
 };
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -134,43 +134,47 @@ impl<'a> std::iter::Sum<&'a Duration> for Duration {
 fn hour_prefix(input: &str) -> IResult<&str, Duration> {
     map(terminated(digit1, tag(":")), |digits: &str| {
         Duration::new(digits.parse::<u64>().unwrap() * SECONDS_IN_HOUR, 0)
-    })(input)
+    })
+    .parse(input)
 }
 
 fn zero_through_five(input: &str) -> IResult<&str, u8> {
-    map(one_of("012345"), |digit| digit as u8 - b'0')(input)
+    map(one_of("012345"), |digit| digit as u8 - b'0').parse(input)
 }
 
 fn single_digit(input: &str) -> IResult<&str, u8> {
-    map(one_of("0123456789"), |digit| digit as u8 - b'0')(input)
+    map(one_of("0123456789"), |digit| digit as u8 - b'0').parse(input)
 }
 
 fn double_digit_minute_prefix(input: &str) -> IResult<&str, Duration> {
     map(
-        tuple((zero_through_five, terminated(single_digit, tag(":")))),
+        (zero_through_five, terminated(single_digit, tag(":"))),
         |(tens, ones)| {
             Duration::new(
                 ((u64::from(tens) * 10) + u64::from(ones)) * SECONDS_IN_MINUTE,
                 0,
             )
         },
-    )(input)
+    )
+    .parse(input)
 }
 
 fn single_digit_minute_prefix(input: &str) -> IResult<&str, Duration> {
     map(terminated(single_digit, tag(":")), |ones| {
         Duration::new(u64::from(ones) * SECONDS_IN_MINUTE, 0)
-    })(input)
+    })
+    .parse(input)
 }
 
 fn double_digit_seconds(input: &str) -> IResult<&str, Duration> {
-    map(tuple((zero_through_five, single_digit)), |(tens, ones)| {
+    map((zero_through_five, single_digit), |(tens, ones)| {
         Duration::new((u64::from(tens) * 10) + u64::from(ones), 0)
-    })(input)
+    })
+    .parse(input)
 }
 
 fn single_digit_seconds(input: &str) -> IResult<&str, Duration> {
-    map(single_digit, |ones| Duration::new(u64::from(ones), 0))(input)
+    map(single_digit, |ones| Duration::new(u64::from(ones), 0)).parse(input)
 }
 
 fn fractional(input: &str) -> IResult<&str, Duration> {
@@ -180,7 +184,8 @@ fn fractional(input: &str) -> IResult<&str, Duration> {
             .parse()
             .map(|value: u32| Duration::new(0, value * scale))
             .map_err(ParseFractError::ParseIntError)
-    })(input)
+    })
+    .parse(input)
 }
 
 enum ParseFractError {
@@ -199,44 +204,48 @@ fn scale_from_length(len: usize) -> Result<u32, ParseFractError> {
 
 fn hours_and_double_digit_minute_prefix(input: &str) -> IResult<&str, Duration> {
     map(
-        tuple((hour_prefix, double_digit_minute_prefix)),
+        (hour_prefix, double_digit_minute_prefix),
         |(hours, minutes)| hours + minutes,
-    )(input)
+    )
+    .parse(input)
 }
 
 fn hour_and_minute_prefix(input: &str) -> IResult<&str, Duration> {
     alt((
         hours_and_double_digit_minute_prefix,
         double_digit_minute_prefix,
-    ))(input)
+    ))
+    .parse(input)
 }
 
 fn minute_prefix(input: &str) -> IResult<&str, Duration> {
-    alt((hour_and_minute_prefix, single_digit_minute_prefix))(input)
+    alt((hour_and_minute_prefix, single_digit_minute_prefix)).parse(input)
 }
 
 fn prefix_and_double_digit_seconds(input: &str) -> IResult<&str, Duration> {
     map(
-        tuple((opt(minute_prefix), double_digit_seconds)),
+        (opt(minute_prefix), double_digit_seconds),
         |(minutes, seconds)| match minutes {
             None => seconds,
             Some(minutes) => minutes + seconds,
         },
-    )(input)
+    )
+    .parse(input)
 }
 
 fn without_decimal(input: &str) -> IResult<&str, Duration> {
-    alt((prefix_and_double_digit_seconds, single_digit_seconds))(input)
+    alt((prefix_and_double_digit_seconds, single_digit_seconds)).parse(input)
 }
 
 pub fn duration_parser(input: &str) -> IResult<&str, Duration> {
     map(
-        tuple((without_decimal, opt(fractional))),
+        (without_decimal, opt(fractional)),
         |(seconds, fraction)| match fraction {
             None => seconds,
             Some(fraction) => seconds + fraction,
         },
-    )(input)
+    )
+    .parse(input)
 }
 
 #[derive(Debug)]
